@@ -663,7 +663,7 @@ These values are as follows:
       (default 'false')
   deviceListStrategy:
       the desired strategy for passing the device list to the underlying runtime
-      [envvar | volume-mounts] (default "envvar")
+      [envvar | volume-mounts | cdi-annotations ] (default "envvar")
   deviceIDStrategy:
       the desired strategy for passing device IDs to the underlying runtime
       [uuid | index] (default "uuid")
@@ -795,6 +795,35 @@ $ helm upgrade -i nvdp \
     --create-namespace \
     https://nvidia.github.io/k8s-device-plugin/stable/nvidia-device-plugin-0.14.0.tgz
 ```
+
+### Deploying with CDI Annotations
+
+The device plugin can be configured to add devices to pods using CDI
+annotations. This may resolve issues with `NVML: Unknown error`, e.g.
+[NVIDIA/gpu-operator#485](github.com/NVIDIA/gpu-operator/issues/485).
+When used in this mode, a few changes are necessary.
+
+1. The host container runtime must be CDI-compatible. This includes `containerd`
+   1.7 and newer, and CRI-O 1.24 and newer.
+2. The nvidia runtime should _not_ be the default runtime, but it must still be
+   installed, and configured as an alternative runtime. For CRI-O, this is done
+   by saving the snippet below into `/etc/crio/crio.conf.d`:
+
+```toml
+[crio.runtime.runtimes.nvidia]
+runtime_path = "/usr/bin/nvidia-container-runtime"
+runtime_type = "oci"
+```
+
+3. The device plugin daemonset must be configured as follows:
+   a. Using the `nvidia` runtime, via the handler of its
+   [runtime-class](https://kubernetes.io/docs/concepts/containers/runtime-class/).
+   b. With the host filesystem mounted read-only in a subfolder. The `containerDriverRoot`
+   config option should point point to that subfolder.
+   c. `/var/run/cdi` must be mounted from the host read/write, at the same path in the container.
+   d. The `deviceListStrategy` option should be `["cdi-annotations"]`.
+4. Utility pods (e.g. GPU feature discovery and the DCGM exporter) must also use
+   the NVIDIA runtime via their runtime-class.
 
 ## Building and Running Locally
 
